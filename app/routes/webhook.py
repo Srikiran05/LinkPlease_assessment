@@ -19,7 +19,7 @@ def webhook():
     global debug_payloads
     
     if not verify_signature(raw_body, signature):
-        debug_payloads.append({'status': 401, 'body': raw_body.decode('utf-8', errors='replace')})
+        debug_payloads.append({'status': 401, 'signature': signature, 'body': raw_body.decode('utf-8', errors='replace')})
         if len(debug_payloads) > 50: debug_payloads.pop(0)
         logger.warning("Invalid signature on webhook request.")
         return jsonify({"error": "invalid signature"}), 401
