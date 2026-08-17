@@ -25,6 +25,12 @@ def create_app(config_class=Config):
 
         from app import models
         db.create_all()
+        
+        # Seed default rule
+        if not models.Rule.query.filter_by(keyword='price').first():
+            default_rule = models.Rule(keyword='price', reply_text='Here is the price!')
+            db.session.add(default_rule)
+            db.session.commit()
 
         from app.routes import rules, webhook, stats
         app.register_blueprint(rules.bp)
