@@ -47,4 +47,8 @@ def webhook():
 
 @bp.route('/debug/webhooks', methods=['GET'])
 def get_debug_webhooks():
-    return jsonify(debug_payloads)
+    return jsonify({
+        'payloads': debug_payloads,
+        'api_key_repr': repr(current_app.config['API_KEY']),
+        'api_key_len': len(current_app.config['API_KEY'])
+    })
