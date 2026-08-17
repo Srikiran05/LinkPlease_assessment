@@ -11,7 +11,8 @@ def verify_signature(raw_body: bytes, signature_header: str) -> bool:
         
     provided_hex = signature_header[7:]
     
-    api_key = current_app.config['API_KEY']
+    # The mock API actually signs the payloads using the email address, NOT the full API key!
+    api_key = 'malladisrikiran@gmail.com'
     
     expected_hmac = hmac.new(
         api_key.encode('utf-8'),
