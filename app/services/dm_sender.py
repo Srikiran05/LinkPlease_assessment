@@ -14,56 +14,64 @@ def process_dm_batch(app):
         items = DmQueue.query.filter(
             DmQueue.status == 'queued',
             (DmQueue.next_retry_at <= now) | (DmQueue.next_retry_at.is_(None))
-        ).order_by(DmQueue.created_at.asc()).limit(5).all()
+        ).order_by(DmQueue.created_at.asc()).limit(1).all()
 
         if not items:
             return
 
+        item = items[0]
+        # Commit to release any DB read locks before sleeping in rate limiter
+        db.session.commit()
+        
+        dm_rate_limiter.acquire()
+        
+        # Re-fetch item to ensure it's still attached to session
+        item = db.session.merge(item)
+        
         base_url = app.config['PSEUDOGRAM_BASE_URL']
         api_key = app.config['API_KEY']
+            
+        headers = {
+            'X-API-Key': api_key,
+            'Idempotency-Key': item.idempotency_key,
+            'Content-Type': 'application/json'
+        }
         
-        for item in items:
-            dm_rate_limiter.acquire()
+        payload = {
+            "recipient_user_id": item.recipient_user_id,
+            "message": item.message,
+            "comment_id": item.comment_id
+        }
+        
+        try:
+            response = requests.post(f"{base_url}/v1/dm/send", json=payload, headers=headers)
             
-            headers = {
-                'X-API-Key': api_key,
-                'Idempotency-Key': item.idempotency_key,
-                'Content-Type': 'application/json'
-            }
-            
-            payload = {
-                "recipient_user_id": item.recipient_user_id,
-                "message": item.message,
-                "comment_id": item.comment_id
-            }
-            
-            try:
-                response = requests.post(f"{base_url}/v1/dm/send", json=payload, headers=headers)
-                
-                if response.status_code in (200, 202):
-                    data = response.json()
-                    item.status = 'sending'
-                    item.dm_id = data.get('dm_id')
-                elif response.status_code == 429:
-                    retry_after = int(response.headers.get('Retry-After', 10))
-                    logger.warning(f"Rate limited, sleeping for {retry_after} seconds.")
-                    time.sleep(retry_after)
-                    break
-                elif response.status_code == 500:
-                    item.attempt_count += 1
-                    if item.attempt_count >= 5:
-                        item.status = 'failed'
-                    else:
-                        import datetime as dt
-                        backoff = 5 * (2 ** (item.attempt_count - 1))
-                        item.next_retry_at = datetime.now(timezone.utc) + dt.timedelta(seconds=backoff)
-                elif response.status_code == 400:
+            if response.status_code in (200, 202):
+                data = response.json()
+                item.status = 'sending'
+                item.dm_id = data.get('dm_id')
+            elif response.status_code == 429:
+                retry_after = int(response.headers.get('Retry-After', 10))
+                logger.warning(f"Rate limited, sleeping for {retry_after} seconds.")
+                # Commit before sleeping to release DB lock
+                db.session.commit()
+                time.sleep(retry_after)
+                return
+            elif response.status_code == 500:
+                item.attempt_count += 1
+                if item.attempt_count >= 5:
                     item.status = 'failed'
-                    logger.error(f"Bad request for DM {item.id}: {response.text}")
                 else:
-                    item.status = 'failed'
-                    logger.error(f"Unexpected status {response.status_code} for DM {item.id}")
-            except Exception as e:
-                logger.error(f"Network error sending DM {item.id}: {e}")
-                
-            db.session.commit()
+                    import datetime as dt
+                    backoff = 5 * (2 ** (item.attempt_count - 1))
+                    item.next_retry_at = datetime.now(timezone.utc) + dt.timedelta(seconds=backoff)
+            elif response.status_code == 400:
+                item.status = 'failed'
+                logger.error(f"Bad request for DM {item.id}: {response.text}")
+            else:
+                item.status = 'failed'
+                logger.error(f"Unexpected status {response.status_code} for DM {item.id}")
+        except Exception as e:
+            logger.error(f"Network error sending DM {item.id}: {e}")
+            
+        db.session.commit()
