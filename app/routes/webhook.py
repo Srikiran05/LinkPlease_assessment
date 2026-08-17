@@ -20,7 +20,7 @@ def webhook():
     
     if not verify_signature(raw_body, signature):
         debug_payloads.append({'status': 401, 'signature': signature, 'body': raw_body.decode('utf-8', errors='replace')})
-        if len(debug_payloads) > 50: debug_payloads.pop(0)
+        if len(debug_payloads) > 1000: debug_payloads.pop(0)
         logger.warning("Invalid signature on webhook request.")
         return jsonify({"error": "invalid signature"}), 401
     
@@ -28,11 +28,11 @@ def webhook():
         payload = json.loads(raw_body)
     except json.JSONDecodeError:
         debug_payloads.append({'status': 400, 'body': raw_body.decode('utf-8', errors='replace')})
-        if len(debug_payloads) > 50: debug_payloads.pop(0)
+        if len(debug_payloads) > 1000: debug_payloads.pop(0)
         return jsonify({'error': 'Invalid JSON'}), 400
     
     debug_payloads.append({'status': 200, 'body': payload})
-    if len(debug_payloads) > 50: debug_payloads.pop(0)
+    if len(debug_payloads) > 1000: debug_payloads.pop(0)
     
     app_instance = current_app._get_current_object()
     
