@@ -20,3 +20,16 @@ def get_stats():
         "queued": queued,
         "duplicates_blocked": duplicates_blocked if duplicates_blocked > 0 else 0
     }), 200
+@bp.route('/debug/queue', methods=['GET'])
+def debug_queue():
+    items = DmQueue.query.all()
+    res = []
+    for i in items:
+        res.append({
+            'id': i.id,
+            'status': i.status,
+            'attempt_count': i.attempt_count,
+            'dm_id': i.dm_id,
+            'next_retry_at': i.next_retry_at.isoformat() if i.next_retry_at else None
+        })
+    return jsonify(res)
