@@ -28,7 +28,7 @@ def create_app(config_class=Config):
         
         # Seed default rule
         if not models.Rule.query.filter_by(keyword='price').first():
-            default_rule = models.Rule(keyword='price', reply_text='Here is the price!')
+            default_rule = models.Rule(keyword='price', dm_message='Here is the price!')
             db.session.add(default_rule)
             db.session.commit()
 
